@@ -9,34 +9,45 @@ namespace BlogApp
 {
     class Program
     {
-        private static string _connectionString = @"Data Source=DEVSQL;Initial Catalog=blog-system;Pooling=true;Integrated Security=SSPI;MultiSubnetFailover=true";
+        private static string _connectionString = @"Server=MSI\SQLEXPRESS;Database=Shop;Trusted_Connection=True;";
 
         static void Main( string[] args )
         {
-            string command = args[ 0 ];
+            string command = Console.ReadLine();
 
-            if ( command == "readpost" )
+            if ( command == "readorder" )
             {
-                List<Post> posts = ReadPosts();
-                foreach ( Post post in posts )
+                List<Order> orders = ReadOrders();
+                foreach ( Order order in orders)
                 {
-                    Console.WriteLine( post.Title );
+                    Console.WriteLine( "\"" + order.ProductName + "\"" + " за " + order.Price );
                 }                
             }
-            else if ( command == "insert" )
+            else if (command == "insert")
             {
-                int createdPostId = InsertPost( 1, "TITLE", "BODY" );
-                Console.WriteLine( "Created post: " + createdPostId );
+                int createdOrderId = InsertOrder(1, "Киви", 30);
+                Console.WriteLine("Created post: " + createdOrderId);
             }
-            else if ( command == "update" )
+            else if (command == "update")
             {
-                UpdatePost( 1, "UPDATED TITLE" );
+                UpdateOrder(1, "Клубника");
+            }
+            else if (command == "statistics")
+            {
+                List<Statistics> statistics = GetStatistics();
+                foreach ( Statistics statisticsItem in statistics)
+                {
+                    Console.WriteLine( "Имя: " + statisticsItem.Name );
+                    Console.WriteLine( "Кол-во товаров: " + statisticsItem.OrderCount );
+                    Console.WriteLine( "Сумма: " + statisticsItem.OrderSum );
+                    Console.WriteLine();
+                }
             }
         }
 
-        private static List<Post> ReadPosts()
+        private static List<Order> ReadOrders()
         {
-            List<Post> posts = new List<Post>();
+            List<Order> orders = new List<Order>();
             using ( SqlConnection connection = new SqlConnection( _connectionString ) )
             {
                 connection.Open();
@@ -45,34 +56,32 @@ namespace BlogApp
                     command.Connection = connection;
                     command.CommandText =
                         @"SELECT
-                            [PostId],
-                            [Title],
-                            [Body],
-                            [AuthorId],
-                            [CreationDateTime]
-                        FROM Post";
+                            [OrderId],
+                            [ProductName],
+                            [Price],
+                            [CustomerId]
+                        FROM [Order]";
 
                     using ( SqlDataReader reader = command.ExecuteReader() )
                     {
                         while ( reader.Read() )
                         {
-                            var post = new Post
+                            var order = new Order
                             {
-                                PostId = Convert.ToInt32( reader[ "PostId" ] ),
-                                Title = Convert.ToString( reader[ "Title" ] ),
-                                Body = Convert.ToString( reader[ "Body" ] ),
-                                AuthorId = Convert.ToInt32( reader[ "AuthorId" ] ),
-                                CreationDateTime = Convert.ToDateTime( reader[ "CreationDateTime" ] ),
+                                OrderId = Convert.ToInt32( reader[ "OrderId" ] ),
+                                ProductName = Convert.ToString( reader[ "ProductName" ] ),
+                                Price = Convert.ToInt32( reader[ "Price" ] ),
+                                CustomerId = Convert.ToInt32( reader[ "CustomerId" ] ),
                             };
-                            posts.Add( post );
+                            orders.Add( order );
                         }
                     }
                 }
             }
-            return posts;
+            return orders;
         }
 
-        private static int InsertPost( int authorId, string title, string body )
+        private static int InsertOrder(int customerId, string productName, int price)
         {
             using ( SqlConnection connection = new SqlConnection( _connectionString ) )
             {
@@ -80,45 +89,77 @@ namespace BlogApp
                 using ( SqlCommand cmd = connection.CreateCommand() )
                 {
                     cmd.CommandText = @"
-                    INSERT INTO [Post]
-                       ([Title],
-                        [Body],
-                        [AuthorId],
-                        [CreationDateTime]) 
+                    INSERT INTO [Order]
+                       ([ProductName],
+                        [Price],
+                        [CustomerId])
                     VALUES 
-                       (@title,
-                        @body,
-                        @authorId,
-                        @creationDateTime)
+                       (@productName,
+                        @price,
+                        @customerId)
                     SELECT SCOPE_IDENTITY()";
 
-                    cmd.Parameters.Add( "@title", SqlDbType.NVarChar ).Value = title;
-                    cmd.Parameters.Add( "@body", SqlDbType.NVarChar ).Value = body;
-                    cmd.Parameters.Add( "@authorId", SqlDbType.Int ).Value = authorId;
-                    cmd.Parameters.Add( "@creationDateTime", SqlDbType.DateTime ).Value = DateTime.Now;
+                    cmd.Parameters.Add("@productName", SqlDbType.NVarChar).Value = productName;
+                    cmd.Parameters.Add("@price", SqlDbType.Int).Value = price;
+                    cmd.Parameters.Add("@customerId", SqlDbType.Int).Value = customerId;
 
-                    return Convert.ToInt32( cmd.ExecuteScalar() );
+                    return Convert.ToInt32(cmd.ExecuteScalar());
                 }
             }
         }
 
-        private static void UpdatePost( int postId, string title )
+        private static void UpdateOrder(int orderId, string productName)
         {
             using ( SqlConnection connection = new SqlConnection( _connectionString ) )
             {
+                connection.Open();
                 using ( SqlCommand command = connection.CreateCommand() )
                 {
                     command.CommandText = @"
-                        UPDATE [Post]
-                        SET [Title] = @title
-                        WHERE PostId = @postId";
+                        UPDATE [Order]
+                        SET [ProductName] = @productName
+                        WHERE [OrderId] = @orderId";
 
-                    command.Parameters.Add( "@postId", SqlDbType.BigInt ).Value = postId;
-                    command.Parameters.Add( "@title", SqlDbType.NVarChar ).Value = title;
+                    command.Parameters.Add("@orderId", SqlDbType.BigInt).Value = orderId;
+                    command.Parameters.Add("@productName", SqlDbType.NVarChar).Value = productName;
 
                     command.ExecuteNonQuery();
                 }
             }
+        }
+
+        private static List<Statistics> GetStatistics()
+        {
+            List<Statistics> statistics = new List<Statistics>();
+            using ( SqlConnection connection = new SqlConnection( _connectionString ) )
+            {
+                connection.Open();
+                using ( SqlCommand command = connection.CreateCommand() )
+                {
+                    command.CommandText = @"SELECT [Customer].[Name] as Name, 
+                                            COUNT([Order].[CustomerId]) as Count, 
+                                            SUM([Order].[Price]) as Sum
+                        FROM [Customer]
+                        LEFT JOIN [Order] ON [Customer].[CustomerId] = [Order].[CustomerId]
+                        GROUP BY ([Customer].[Name])";
+
+                    using ( SqlDataReader reader = command.ExecuteReader() )
+                    {
+                        while ( reader.Read() )
+                        {
+                            var statisticsItem = new Statistics
+                            {
+                                Name = Convert.ToString(reader["Name"]),
+                                OrderCount = Convert.ToInt32(reader["Count"]),
+                                OrderSum = Convert.ToInt32(reader["Sum"])
+                            };
+                            statistics.Add( statisticsItem );
+                        }
+                    }
+                }    
+            };
+
+            return statistics;
         }
     }
 }
